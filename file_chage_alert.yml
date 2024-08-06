@@ -17,7 +17,7 @@ jobs:
       id: check_file
       run: |
         git fetch origin main --depth=2
-        if git diff --name-only HEAD^ HEAD | grep -q 'testing-kalyan'; then
+        if git diff --name-only HEAD^ HEAD | grep -q 'testing_file'; then
           echo "file_changed=true" >> $GITHUB_ENV
         else
           echo "file_changed=false" >> $GITHUB_ENV
@@ -31,7 +31,7 @@ jobs:
       env:
         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_DEV }}
       run: |
-        curl -X POST -H 'Content-type: application/json' --data '{"text":"The file testing-kalyan was modified!"}' $SLACK_WEBHOOK_URL
+        curl -X POST -H 'Content-type: application/json' --data '{"text":"The file testing_file was modified!"}' $SLACK_WEBHOOK_URL
 
     - name: Send alert to Slack on job failure
       if: ${{ failure() }}
