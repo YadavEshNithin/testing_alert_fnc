@@ -31,7 +31,7 @@ jobs:
       env:
         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_DEV }}
       run: |
-        curl -X POST -H 'Content-type: application/json' --data '{"text":"The file testing_file was modified!"}' $SLACK_WEBHOOK_URL
+        curl -X POST -H 'Content-type: application/json' --data '{"text":"The file testing... testing_file was modified!"}' $SLACK_WEBHOOK_URL
 
     - name: Send alert to Slack on job failure
       if: ${{ failure() }}
