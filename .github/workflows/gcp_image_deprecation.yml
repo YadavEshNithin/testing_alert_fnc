@@ -44,7 +44,7 @@ jobs:
           echo "environment=${environment}" >> $GITHUB_ENV
           
 
-      - name: Get GCP instances and their zones
+        - name: Get GCP instances and their zones
   run: |
     set -e  # Exit immediately if a command exits with a non-zero status
     
