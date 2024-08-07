@@ -1,8 +1,9 @@
 name: GCP Instances image deprecation and Send Slack Alerts
 
 on:
-  schedule:
-   - cron: '30 13 * * 1' # Runs every Monday at 7 PM IST (1:30 PM UTC)
+  workflow_dispatch:
+  #schedule:
+  # - cron: '30 13 * * 1' # Runs every Monday at 7 PM IST (1:30 PM UTC)
 
 jobs:
   GCP_Image_Deprecation:
