@@ -1,9 +1,55 @@
+# name: File Change Alert
+
+# on:
+#   push:
+#     branches:
+#       - main
+
+# jobs:
+#   notify-slack:
+#     runs-on: ubuntu-latest
+
+#     steps:
+#     - name: Check out the repository
+#       uses: actions/checkout@v3
+
+#     - name: Check if the file was modified
+#       id: check_file
+#       run: |
+#         git fetch origin main --depth=2
+#         if git diff --name-only HEAD^ HEAD | grep -q 'testing_file'; then
+#           echo "file_changed=true" >> $GITHUB_ENV
+#         else
+#           echo "file_changed=false" >> $GITHUB_ENV
+#         fi
+
+#     - name: Debug environment variables
+#       run: echo "file_changed=${{ env.file_changed }}"
+
+#     - name: Send alert to Slack on a File modification
+#       if: ${{ success() && env.file_changed == 'true' }}
+#       env:
+#         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_DEV }}
+#       run: |
+#         curl -X POST -H 'Content-type: application/json' --data '{"text":"The file testing_file was modified!"}' $SLACK_WEBHOOK_URL
+
+#     - name: Send alert to Slack on job failure
+#       if: ${{ failure() }}
+#       env:
+#         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_DEV }}
+#       run: |
+#         curl -X POST -H 'Content-type: application/json' --data '{"text":"The File Change Alert workflow failed!"}' $SLACK_WEBHOOK_URL
+
+
+
+
+
+
+
 name: File Change Alert
 
 on:
   push:
-    branches:
-      - main
 
 jobs:
   notify-slack:
@@ -16,7 +62,7 @@ jobs:
     - name: Check if the file was modified
       id: check_file
       run: |
-        git fetch origin main --depth=2
+        git fetch origin $GITHUB_REF --depth=2
         if git diff --name-only HEAD^ HEAD | grep -q 'testing_file'; then
           echo "file_changed=true" >> $GITHUB_ENV
         else
@@ -26,16 +72,18 @@ jobs:
     - name: Debug environment variables
       run: echo "file_changed=${{ env.file_changed }}"
 
-    - name: Send alert to Slack on a File modification
+    - name: Send alert to Slack on a file modification
       if: ${{ success() && env.file_changed == 'true' }}
       env:
         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_DEV }}
       run: |
-        curl -X POST -H 'Content-type: application/json' --data '{"text":"The file testing_file was modified!"}' $SLACK_WEBHOOK_URL
+        branch_name=$(echo $GITHUB_REF | sed 's/refs\/heads\///')
+        curl -X POST -H 'Content-type: application/json' --data '{"text":"The file testing_file was modified on branch '"$branch_name"'!"}' $SLACK_WEBHOOK_URL
 
     - name: Send alert to Slack on job failure
       if: ${{ failure() }}
       env:
         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_DEV }}
       run: |
-        curl -X POST -H 'Content-type: application/json' --data '{"text":"The File Change Alert workflow failed!"}' $SLACK_WEBHOOK_URL
+        branch_name=$(echo $GITHUB_REF | sed 's/refs\/heads\///')
+        curl -X POST -H 'Content-type: application/json' --data '{"text":"The File Change Alert workflow failed on branch '"$branch_name"'!"}' $SLACK_WEBHOOK_URL
