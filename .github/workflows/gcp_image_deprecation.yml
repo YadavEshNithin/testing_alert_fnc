@@ -46,7 +46,7 @@ jobs:
       - name: Get GCP instances and their zones
         run: |
           set -e  # Exit immediately if a command exits with a non-zero status
-          
+
           # Function to check image deprecation
           check_image_deprecation() {
             local instance_name=$1
@@ -124,7 +124,7 @@ jobs:
         run: |
           send_slack_notification() {
               local webhook_url="${{ env.SLACK_WEBHOOK_URL }}"
-              local message="The workflow List GCP Instances and Send Slack Alerts failed for ${{env.environment}} environment."
+              local message="The workflow List GCP Instances and Send Slack Alerts failed for ${{ env.environment }} environment."
               curl -X POST -H 'Content-type: application/json' --data "{ 'text': 'GCP_INSTANCE_IMAGE_DEPRECATION:\n\n$message'}" $webhook_url
           }
           send_slack_notification
