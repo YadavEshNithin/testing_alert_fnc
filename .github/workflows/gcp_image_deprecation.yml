@@ -42,7 +42,7 @@ jobs:
         run: |
           environment=$(echo ${{ matrix.env }} | tr '[:lower:]' '[:upper:]')
           echo "environment=${environment}" >> $GITHUB_ENV
-          
+
       - name: Get GCP instances and their zones
         run: |
           set -e  # Exit immediately if a command exits with a non-zero status
@@ -51,28 +51,28 @@ jobs:
           check_image_deprecation() {
             local instance_name=$1
             local zone=$2
-            
+
             echo "Checking instance: $instance_name in zone: $zone"
-            
+
             # Get the source image of the boot disk
             if ! source_image=$(gcloud compute instances describe $instance_name --zone=$zone --format=json 2>&1 | jq -r '.disks[].source' | xargs -I {} gcloud compute disks describe {} --zone=$zone --format=json 2>&1 | jq -r .sourceImage | awk -F'/' '{print $NF}'); then
               echo "Error getting source image for instance $instance_name: $source_image"
               return
             fi
-            
+
             if [ -z "$source_image" ]; then
               echo "No source image found for instance $instance_name."
               return
             fi
-            
+
             echo "Source image for $instance_name: $source_image"
-            
+
             # Check if the image is deprecated
             if ! deprecated_state=$(gcloud compute images describe $source_image --project=debian-cloud --format=json 2>&1 | jq -r .deprecated.state); then
               echo "Error checking deprecation state for image $source_image: $deprecated_state"
               return
             fi
-            
+
             if [ "$deprecated_state" == "DEPRECATED" ]; then
               echo "The image IMAGE: $source_image used by INSTANCE: $instance_name in ZONE: $zone is deprecated in ${{ env.environment }} environment." >> deprecated_instances.txt
             fi
