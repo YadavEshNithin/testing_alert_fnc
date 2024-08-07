@@ -113,9 +113,11 @@ jobs:
 
               if [ -f deprecated_instances.txt ]; then
                   message=$(cat deprecated_instances.txt)
+                  curl -X POST -H 'Content-type: application/json' --data "{ 'text': 'GCP_INSTANCE_IMAGE_DEPRECATION:\n\n$message'}" $webhook_url
+              else
+                  message="The job ran successfully, and no deprecated images were found in the ${{ env.environment }} environment."
+                  curl -X POST -H 'Content-type: application/json' --data "{ 'text': '$message'}" $webhook_url
               fi
-
-              curl -X POST -H 'Content-type: application/json' --data "{ 'text': 'GCP_INSTANCE_IMAGE_DEPRECATION:\n\n$message'}" $webhook_url
           }
           send_slack_notification
 
