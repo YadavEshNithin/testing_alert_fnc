@@ -45,40 +45,65 @@ jobs:
           
 
       - name: Get GCP instances and their zones
-        run: |
-          # Function to check image deprecation
-          check_image_deprecation() {
-              local instance_name=$1
-              local zone=$2
+  run: |
+    set -e  # Exit immediately if a command exits with a non-zero status
+    
+    # Function to check image deprecation
+    check_image_deprecation() {
+      local instance_name=$1
+      local zone=$2
+      
+      echo "Checking instance: $instance_name in zone: $zone"
+      
+      # Get the source image of the boot disk
+      if ! source_image=$(gcloud compute instances describe $instance_name --zone=$zone --format=json 2>&1 | jq -r '.disks[].source' | xargs -I {} gcloud compute disks describe {} --zone=$zone --format=json 2>&1 | jq -r .sourceImage | awk -F'/' '{print $NF}'); then
+        echo "Error getting source image for instance $instance_name: $source_image"
+        return
+      fi
+      
+      if [ -z "$source_image" ]; then
+        echo "No source image found for instance $instance_name."
+        return
+      fi
+      
+      echo "Source image for $instance_name: $source_image"
+      
+      # Check if the image is deprecated
+      if ! deprecated_state=$(gcloud compute images describe $source_image --project=debian-cloud --format=json 2>&1 | jq -r .deprecated.state); then
+        echo "Error checking deprecation state for image $source_image: $deprecated_state"
+        return
+      fi
+      
+      if [ "$deprecated_state" == "DEPRECATED" ]; then
+        echo "The image IMAGE: $source_image used by INSTANCE: $instance_name in ZONE: $zone is deprecated in ${{ env.environment }} environment." >> deprecated_instances.txt
+      fi
+    }
 
-              # Get the source image of the boot disk
-              source_image=$(gcloud compute instances describe $instance_name --zone=$zone --format=json \
-                | jq -r '.disks[].source' \
-                | xargs -I {} gcloud compute disks describe {} --zone=$zone --format=json \
-                | jq -r .sourceImage \
-                | awk -F'/' '{print $NF}')
+    echo "Fetching instances..."
+    if ! instances_and_zones=$(gcloud compute instances list --format="csv[no-heading](name,zone)" 2>&1 | grep -E 'cloud-sql-connect|.*-proxy-*'); then
+      echo "Error fetching instances: $instances_and_zones"
+      exit 1
+    fi
 
-              if [ -z "$source_image" ]; then
-                  echo "No source image found for instance $instance_name."
-                  return
-              fi
-            
-              # Check if the image is deprecated
-              deprecated_state=$(gcloud compute images describe $source_image --project=debian-cloud --format=json | jq -r .deprecated.state)
+    if [ -z "$instances_and_zones" ]; then
+      echo "No instances found matching the criteria."
+      exit 0
+    fi
 
-              if [ "$deprecated_state" == "DEPRECATED" ]; then
-                  echo "The image IMAGE: $source_image used by INSTANCE: $instance_name in ZONE: $zone is deprecated in ${{env.environment}} environment." >> deprecated_instances.txt
-                  
-              fi
-          }
+    echo "Found instances:"
+    echo "$instances_and_zones"
 
-          # Fetch the instance names and zones dynamically, filtering for "cloud-sql-connect" and "*-proxy-*"
-          instances_and_zones=$(gcloud compute instances list --format="csv[no-heading](name,zone)" | grep -E 'cloud-sql-connect|.*-proxy-*')
-          
-          # Loop through each instance and check for deprecation
-          while IFS=, read -r instance_name zone; do
-              check_image_deprecation "$instance_name" "$zone"
-          done <<< "$instances_and_zones"
+    # Loop through each instance and check for deprecation
+    while IFS=, read -r instance_name zone; do
+      check_image_deprecation "$instance_name" "$zone"
+    done <<< "$instances_and_zones"
+
+    echo "Finished checking instances."
+  env:
+    CLOUDSDK_METRICS_ENVIRONMENT: github-actions-setup-gcloud
+    CLOUDSDK_METRICS_ENVIRONMENT_VERSION: 1.1.1
+    GCP_PROJECT_ID: ${{ env.GCP_PROJECT_ID }}
+    SLACK_WEBHOOK_URL: ${{ env.SLACK_WEBHOOK_URL }}
 
       - name: Send Slack Alert if Deprecation Detected
         if: ${{ success() }}
