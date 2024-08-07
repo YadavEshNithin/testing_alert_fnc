@@ -1,16 +1,15 @@
 name: GCP Instances image deprecation and Send Slack Alerts
 
 on:
-  workflow_dispatch:
-  #schedule:
-  # - cron: '30 13 * * 1' # Runs every Monday at 7 PM IST (1:30 PM UTC)
+  schedule:
+   - cron: '30 13 * * 1' # Runs every Monday at 7 PM IST (1:30 PM UTC)
 
 jobs:
   GCP_Image_Deprecation:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        env: [dev]  # Define the environments
+        env: [dev, test]  # Define the environments
 
     steps:
       - name: Checkout repository
@@ -21,33 +20,24 @@ jobs:
         with:
           version: 'latest'
 
-      - name: Set environment variables
+      - name: Set environment variables and prepare GCP key
         run: |
           if [ "${{ matrix.env }}" == "dev" ]; then
-            echo "GCP_SERVICE_ACCOUNT_KEY=${{ secrets.GCP_SERVICE_ACCOUNT_KEY_DEV }}" >> $GITHUB_ENV
-            echo "GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID_DEV }}" >> $GITHUB_ENV
+            echo "GCP_PROJECT_ID=continual-tine-413511" >> $GITHUB_ENV
             echo "SLACK_WEBHOOK_URL=${{ secrets.SLACK_WEBHOOK_URL_DEV }}" >> $GITHUB_ENV
+            echo '${{ secrets.GCP_SERVICE_ACCOUNT_KEY_DEV }}' > $HOME/gcp-key.json
           elif [ "${{ matrix.env }}" == "test" ]; then
-            echo "GCP_SERVICE_ACCOUNT_KEY=${{ secrets.GCP_SERVICE_ACCOUNT_KEY_TEST }}" >> $GITHUB_ENV
             echo "GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID_TEST }}" >> $GITHUB_ENV
             echo "SLACK_WEBHOOK_URL=${{ secrets.SLACK_WEBHOOK_URL_TEST }}" >> $GITHUB_ENV
-          elif [ "${{ matrix.env }}" == "stage" ]; then
-            echo "GCP_SERVICE_ACCOUNT_KEY=${{ secrets.GCP_SERVICE_ACCOUNT_KEY_STAGE }}" >> $GITHUB_ENV
-            echo "GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID_STAGE }}" >> $GITHUB_ENV
-            echo "SLACK_WEBHOOK_URL=${{ secrets.SLACK_WEBHOOK_URL_STAGE }}" >> $GITHUB_ENV
-          elif [ "${{ matrix.env }}" == "prod" ]; then
-            echo "GCP_SERVICE_ACCOUNT_KEY=${{ secrets.GCP_SERVICE_ACCOUNT_KEY_PROD }}" >> $GITHUB_ENV
-            echo "GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID_PROD }}" >> $GITHUB_ENV
-            echo "SLACK_WEBHOOK_URL=${{ secrets.SLACK_WEBHOOK_URL_PROD }}" >> $GITHUB_ENV
+            echo '${{ secrets.GCP_SERVICE_ACCOUNT_KEY_TEST }}' > $HOME/gcp-key.json
           fi
 
       - name: Authenticate to Google Cloud
         run: |
-          echo "${{ env.GCP_SERVICE_ACCOUNT_KEY }}" | base64 --decode > $HOME/gcp-key.json
           gcloud auth activate-service-account --key-file=$HOME/gcp-key.json
           gcloud config set project ${{ env.GCP_PROJECT_ID }}
 
-      - name: Captalize the env name
+      - name: Capitalize the env name
         run: |
           environment=$(echo ${{ matrix.env }} | tr '[:lower:]' '[:upper:]')
           echo "environment=${environment}" >> $GITHUB_ENV
