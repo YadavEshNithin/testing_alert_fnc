@@ -1,0 +1,132 @@
+name: GCP Instances Image Deprecation and Send Slack Alerts
+
+on:
+  workflow_dispatch:
+  #schedule:
+  # - cron: '30 13 * * 1' # Runs every Monday at 7 PM IST (1:30 PM UTC)
+
+jobs:
+  GCP_Image_Deprecation:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        env: [dev]  # Define the environments
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          version: 'latest'
+
+      - name: Set environment variables and prepare GCP key
+        run: |
+          if [ "${{ matrix.env }}" == "dev" ]; then
+            echo "GCP_PROJECT_ID=continual-tine-413511" >> $GITHUB_ENV
+            echo "SLACK_WEBHOOK_URL=${{ secrets.SLACK_WEBHOOK_URL_DEV }}" >> $GITHUB_ENV
+            echo '${{ secrets.GCP_SERVICE_ACCOUNT_KEY_DEV }}' > $HOME/gcp-key.json
+          elif [ "${{ matrix.env }}" == "test" ]; then
+            echo "GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID_TEST }}" >> $GITHUB_ENV
+            echo "SLACK_WEBHOOK_URL=${{ secrets.SLACK_WEBHOOK_URL_TEST }}" >> $GITHUB_ENV
+            echo '${{ secrets.GCP_SERVICE_ACCOUNT_KEY_TEST }}' > $HOME/gcp-key.json
+          fi
+
+      - name: Authenticate to Google Cloud
+        run: |
+          gcloud auth activate-service-account --key-file=$HOME/gcp-key.json
+          gcloud config set project ${{ env.GCP_PROJECT_ID }}
+
+      - name: Capitalize the env name
+        run: |
+          environment=$(echo ${{ matrix.env }} | tr '[:lower:]' '[:upper:]')
+          echo "environment=${environment}" >> $GITHUB_ENV
+
+      - name: Get GCP instances and their zones
+        run: |
+          set -e  # Exit immediately if a command exits with a non-zero status
+
+          # Function to check image deprecation
+          check_image_deprecation() {
+            local instance_name=$1
+            local zone=$2
+
+            echo "Checking instance: $instance_name in zone: $zone"
+
+            # Get the source image of the boot disk
+            if ! source_image=$(gcloud compute instances describe $instance_name --zone=$zone --format=json 2>&1 | jq -r '.disks[].source' | xargs -I {} gcloud compute disks describe {} --zone=$zone --format=json 2>&1 | jq -r .sourceImage | awk -F'/' '{print $NF}'); then
+              echo "Error getting source image for instance $instance_name: $source_image"
+              return
+            fi
+
+            if [ -z "$source_image" ]; then
+              echo "No source image found for instance $instance_name."
+              return
+            fi
+
+            echo "Source image for $instance_name: $source_image"
+
+            # Check if the image is deprecated
+            if ! deprecated_state=$(gcloud compute images describe $source_image --project=debian-cloud --format=json 2>&1 | jq -r .deprecated.state); then
+              echo "Error checking deprecation state for image $source_image: $deprecated_state"
+              return
+            fi
+
+            if [ "$deprecated_state" == "DEPRECATED" ]; then
+              echo "The image IMAGE: $source_image used by INSTANCE: $instance_name in ZONE: $zone is deprecated in ${{ env.environment }} environment." >> deprecated_instances.txt
+            fi
+          }
+
+          echo "Fetching instances..."
+          if ! instances_and_zones=$(gcloud compute instances list --format="csv[no-heading](name,zone)" 2>&1 | grep -E 'cloud-sql-connect|.*-proxy-*'); then
+            echo "Error fetching instances: $instances_and_zones"
+            exit 1
+          fi
+
+          if [ -z "$instances_and_zones" ]; then
+            echo "No instances found matching the criteria."
+            exit 0
+          fi
+
+          echo "Found instances:"
+          echo "$instances_and_zones"
+
+          # Loop through each instance and check for deprecation
+          while IFS=, read -r instance_name zone; do
+            check_image_deprecation "$instance_name" "$zone"
+          done <<< "$instances_and_zones"
+
+          echo "Finished checking instances."
+        env:
+          CLOUDSDK_METRICS_ENVIRONMENT: github-actions-setup-gcloud
+          CLOUDSDK_METRICS_ENVIRONMENT_VERSION: 1.1.1
+          GCP_PROJECT_ID: ${{ env.GCP_PROJECT_ID }}
+          SLACK_WEBHOOK_URL: ${{ env.SLACK_WEBHOOK_URL }}
+
+      - name: Send Slack Alert if Deprecation Detected
+        if: ${{ success() }}
+        run: |
+          send_slack_notification() {
+              local webhook_url="${{ env.SLACK_WEBHOOK_URL }}"
+              local message=""
+
+              if [ -f deprecated_instances.txt ]; then
+                  message=$(cat deprecated_instances.txt)
+                  curl -X POST -H 'Content-type: application/json' --data "{ 'text': 'GCP_INSTANCE_IMAGE_DEPRECATION:\n\n$message'}" $webhook_url
+              else
+                  message="The job ran successfully, and no deprecated images were found in the ${{ env.environment }} environment."
+                  curl -X POST -H 'Content-type: application/json' --data "{ 'text': '$message'}" $webhook_url
+              fi
+          }
+          send_slack_notification
+
+      - name: Send alert to Slack on job failure
+        if: ${{ failure() }}
+        run: |
+          send_slack_notification() {
+              local webhook_url="${{ env.SLACK_WEBHOOK_URL }}"
+              local message="The workflow List GCP Instances and Send Slack Alerts failed for ${{ env.environment }} environment."
+              curl -X POST -H 'Content-type: application/json' --data "{ 'text': 'GCP_INSTANCE_IMAGE_DEPRECATION:\n\n$message'}" $webhook_url
+          }
+          send_slack_notification
