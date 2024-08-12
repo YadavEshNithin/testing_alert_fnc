@@ -1,0 +1,57 @@
+name: Certificate Expiry Check
+on:
+  schedule:
+    - cron: '0 0 * * *'  # Runs at 00:00 UTC every day
+  workflow_dispatch:  # Allows manual triggering
+jobs:
+  check-certificates:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.9'
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyOpenSSL requests
+    - name: Check certificate expiration
+      env:
+        SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+      run: |
+        cat > check_cert.py << EOL
+        import OpenSSL
+        import datetime
+        import requests
+        import os
+        def check_cert_expiration(cert_path, days_threshold=7):
+            with open(cert_path, 'r') as f:
+                cert_data = f.read()
+            cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert_data)
+            expiration_date = datetime.datetime.strptime(cert.get_notAfter().decode('ascii'), '%Y%m%d%H%M%SZ')
+            days_until_expiration = (expiration_date - datetime.datetime.now()).days
+            return days_until_expiration <= days_threshold, days_until_expiration, expiration_date
+        def send_slack_notification(message):
+            webhook_url = os.environ['SLACK_WEBHOOK']
+            payload = {"text": message}
+            requests.post(webhook_url, json=payload)
+        if __name__ == '__main__':
+            alert_messages = []
+            for service in ['service1', 'service2']:
+                cert_path = f'{service}-chain.pem'
+                try:
+                    needs_renewal, days_left, exp_date = check_cert_expiration(cert_path)
+                    status = "needs renewal" if needs_renewal else "is okay"
+                    message = f"{service} certificate {status}. Expires in {days_left} days (on {exp_date})."
+                    print(message)
+                    if needs_renewal:
+                        alert_messages.append(message)
+                except FileNotFoundError:
+                    print(f"{service} certificate file not found: {cert_path}")
+                except Exception as e:
+                    print(f"Error processing {service} certificate: {str(e)}")
+            if alert_messages:
+                send_slack_notification("ALERT: Certificate Expiry\n" + "\n".join(alert_messages))
+        EOL
+        python check_cert.py
