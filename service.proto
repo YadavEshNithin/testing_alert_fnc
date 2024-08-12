@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+   package certdemo;
+
+   service CertificateService {
+     rpc ExchangeCertificates (CertRequest) returns (CertResponse) {}
+   }
+
+   message CertRequest {
+     string service_name = 1;
+     string certificate = 2;
+   }
+
+   message CertResponse {
+     string message = 1;
+     string certificate = 2;
+   }

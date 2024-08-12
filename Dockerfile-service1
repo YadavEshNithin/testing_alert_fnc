@@ -1,0 +1,7 @@
+FROM python:3.9-slim
+WORKDIR /app
+COPY service1.py service_pb2.py service_pb2_grpc.py ./
+COPY service1.key service1-chain.pem ./
+RUN pip install grpcio protobuf
+CMD ["python", "service1.py"]
+
